@@ -19,11 +19,20 @@ void match(char c);
 char getName();
 char getNum();
 void emit(char *fmt, ...);
+void expression();
+void term();
+void add();
+void subtract();
+void factor();
+void multiply();
+void divide();
+int isAddOp(char c);
 
 /* PROGRAMA PRINCIPAL */
 int main()
 {
     init();
+    expression();
 
     return 0;
 }
@@ -120,6 +129,7 @@ char getNum()
 {
     char num;
 
+    //se não for um número gera uma erro
     if (!isdigit(look))
         expected("Integer");
     num = look;
@@ -140,4 +150,118 @@ void emit(char *fmt, ...)
     va_end(args);
 
     putchar('\n');
+}
+
+/* analisa e traduz uma expressão */
+void term()
+{
+    factor();
+    //primeiro verificamos mul. e ad. pois tem prioridade
+    //em expressões numéricas
+    while (look == '*' || look == '/') {
+        emit("PUSH AX");
+        switch(look) {
+            case '*':
+                multiply();
+                break;
+            case '/':
+                divide();
+                break;
+            default:
+                expected("MulOp");
+                break;
+        }
+    }
+}
+
+/* reconhece e traduz uma expressão */
+void expression()
+{
+    if (isAddOp(look))
+        //XOR AX, AX -> será definido AX como zero
+        //para mudar operações do tipo -1 para
+        //0-1
+        emit("XOR AX, AX");
+    else
+        term();
+
+    while (isAddOp(look)) {
+        //push coloca na pilha
+        emit("PUSH AX");
+        //emit("MOV BX, AX");
+        switch(look) {
+            case '+':
+                add();
+                break;
+            case '-':
+                subtract();
+                break;
+            default:
+                expected("AddOp");
+                break;
+        }
+    }
+}
+
+/* reconhece operador aditivo */
+int isAddOp(char c)
+{
+    return (c == '+' || c == '-');
+}
+
+/* reconhece e traduz uma adição */
+void add()
+{
+    match('+');
+    term();
+    //retira da pinha e coloca em BX
+    emit("POP BX");
+    emit("ADD AX, BX");
+}
+
+/* reconhece e traduz uma subtração */
+void subtract()
+{
+    match('-');
+    term();
+    emit("POP BX");
+    emit("SUB AX, BX");
+    //muda sinal de AX
+    emit("NEG AX");
+}
+
+/* analisa e traduz um fator matemático */
+void factor()
+{
+    if (look == '(') {
+        match('(');
+        expression();
+        match(')');
+    } else
+        //MOV coloca c no registrador AX
+        emit("MOV AX, %c", getNum());
+}
+
+//multiplicação e a divisão usam o par de 
+//registradores DX:AX para armazenar os valores
+
+/* reconhece e traduz uma multiplicação */
+void multiply()
+{
+    match('*');
+    factor();
+    emit("POP BX");
+    emit("IMUL BX");
+}
+
+/* reconhece e traduz uma divisão */
+void divide()
+{
+    match('/');
+    factor();
+    emit("POP BX");
+    emit("XCHG AX, BX");
+    //CWD expande o valor de AX para DX:AX
+    emit("CWD");
+    emit("IDIV BX");
 }
