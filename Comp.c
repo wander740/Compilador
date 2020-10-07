@@ -5,6 +5,9 @@
 #include <stdarg.h>
 #include <ctype.h>
 
+#define MAXNAME 30
+#define MAXNUM 5
+
 char look; /* O caracter lido "antecipadamente" (lookahead) */
 
 /* protótipos */
@@ -16,8 +19,8 @@ void error(char *fmt, ...);
 void fatal(char *fmt, ...);
 void expected(char *fmt, ...);
 void match(char c);
-char getName();
-char getNum();
+char getName1();
+char getNum1();
 void emit(char *fmt, ...);
 void expression();
 void term();
@@ -27,20 +30,104 @@ void factor();
 void multiply();
 void divide();
 int isAddOp(char c);
+void ident();
+void assignment();
+void skipWhite();
+void getName(char *name);
+void getNum(char *num);
 
 /* PROGRAMA PRINCIPAL */
 int main()
 {
     init();
-    expression();
+    assignment();
+    if (look != '\n')
+        expected("NewLine");
 
     return 0;
+}
+
+
+// recebe o nome de um identificador
+void getName(char *name)
+{
+
+    int i;
+    if (!isalpha(look))
+        expected("Name");
+
+    for (i = 0; isalnum(look); i++) {
+        if (i >= MAXNAME)
+            fatal("Identifier too long!");
+            name[i] = toupper(look);
+            nextChar();
+
+    }
+
+    name[i] = '\0';
+    skipWhite();
+
+}
+
+// recebe um número inteiro
+void getNum(char *num)
+{
+
+    int i;
+
+    if (!isdigit(look))
+        expected("Integer");
+
+    for (i = 0; isdigit(look); i++) {
+        if (i >= MAXNUM)
+            fatal("Integer too long!");
+
+        num[i] = look;
+        nextChar();
+
+    }
+
+    num[i] = '\0';
+    skipWhite();
+
+}
+
+// recebe o nome de um identificador 
+char getName1()
+{
+    char name;
+
+    if (!isalpha(look))
+        expected("Name");
+    name = toupper(look);
+    nextChar();
+    skipWhite();
+
+    return name;
+}
+
+// recebe um número inteiro 
+char getNum1()
+{
+    char num;
+
+    //se não for um número gera uma erro
+    if (!isdigit(look))
+        expected("Integer");
+    num = look;
+    nextChar();
+    skipWhite();
+
+    return num;
 }
 
 /* inicialização do compilador */
 void init()
 {
     nextChar();
+    //pula espaços em branco
+    skipWhite();
+
 }
 
 /* lê próximo caracter da entrada */
@@ -109,33 +196,23 @@ void match(char c)
     if (look != c)
         expected("'%c'", c);
     nextChar();
+    skipWhite();
+
 }
 
-/* recebe o nome de um identificador */
-char getName()
+/* analisa e traduz um comando de atribuição */
+void assignment()
 {
-    char name;
+    //char name;
+    //name = getName();
 
-    if (!isalpha(look))
-        expected("Name");
-    name = toupper(look);
-    nextChar();
+    char name[MAXNAME+1];
+    getName(name);
 
-    return name;
-}
+    match('=');
+    expression();
+    emit("MOV [%s], AX", name);
 
-/* recebe um número inteiro */
-char getNum()
-{
-    char num;
-
-    //se não for um número gera uma erro
-    if (!isdigit(look))
-        expected("Integer");
-    num = look;
-    nextChar();
-
-    return num;
 }
 
 /* emite uma instrução seguida por uma nova linha */
@@ -230,16 +307,52 @@ void subtract()
     emit("NEG AX");
 }
 
+/* analisa e traduz um identificador */
+void ident()
+{
+
+    //char name;
+    //name = getName();
+    
+    //para nomes com mais de uma letra
+    char name[MAXNAME+1];
+    getName(name);
+
+    //verifica função
+    if (look == '(') {
+
+        match('(');
+        match(')');
+        emit("CALL %s", name);
+
+    } else
+        //isalpha verifica se look o caractere
+        //é um algabeto (a-z e A-Z)
+        //emit("MOV AX, [%c]",getName());
+        //move o valor contido em name para AX
+        emit("MOV AX, [%s]", name);
+
+}
+
 /* analisa e traduz um fator matemático */
 void factor()
 {
+    //mais de uma casa decimal
+    char num[MAXNUM+1];
+    
     if (look == '(') {
         match('(');
         expression();
         match(')');
-    } else
+    //verifica se é uma variavel
+    }else if(isalpha(look))
+        ident();
+    else
+        getNum(num);
+        emit("MOV AX, %s", num);
+
         //MOV coloca c no registrador AX
-        emit("MOV AX, %c", getNum());
+        //emit("MOV AX, %c", getNum());
 }
 
 //multiplicação e a divisão usam o par de 
@@ -264,4 +377,13 @@ void divide()
     //CWD expande o valor de AX para DX:AX
     emit("CWD");
     emit("IDIV BX");
+}
+
+/* pula caracteres de espaço */
+
+void skipWhite()
+{
+    while (look == ' ' || look == '\t')
+        nextChar();
+
 }
