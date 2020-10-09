@@ -9,6 +9,7 @@
 #define MAXNUM 5
 
 char look; /* O caracter lido "antecipadamente" (lookahead) */
+int labelCount; /* Contador usado pelo gerador de rótulos */
 
 /* protótipos */
 void init();
@@ -35,18 +36,264 @@ void assignment();
 void skipWhite();
 void getName(char *name);
 void getNum(char *num);
+void other();
+void program();
+void block();
+int newLabel();
+int postLabel(int lbl);
+void doIf();
+void condition();
+void doLoop();
+void doFor();
+void expression1();
+void doDo();
+void doBreak(int );
 
 /* PROGRAMA PRINCIPAL */
 int main()
 {
+    labelCount = 0;
     init();
-    assignment();
-    if (look != '\n')
-        expected("NewLine");
+    //assignment();
+    //if (look != '\n')
+    //    expected("NewLine");
+    program();
 
     return 0;
 }
 
+/* gera um novo rótulo único */
+int newLabel()
+{
+    return labelCount++;
+}
+
+/* emite um rótulo */
+int postLabel(int lbl)
+{
+    printf("L%d:\n", lbl);
+}
+
+/* analisa e traduz um comando BREAK */
+void doBreak(int exitLabel)
+{
+        match('b');
+        if (exitLabel == -1)
+            fatal("No loop to break from");
+        emit("JMP L%d", exitLabel);
+}
+
+/* analisa e traduz um comando DO */
+void doDo()
+{
+    int l1, l2;
+
+    match('d');
+    l1 = newLabel();
+    l2 = newLabel();
+    expression();
+    emit("MOV CX, AX");
+    postLabel(l1);
+    emit("PUSH CX");
+    block(l2);
+    emit("POP CX");
+    emit("LOOP L%d", l1);
+    emit("PUSH CX");
+    postLabel(l2);
+    emit("POP CX");
+}
+
+//IF <condição> <bloco> ENDIF
+/* analisa e traduz um comando IF */
+void doIf(int exitLabel)
+{
+    int l1,l2;
+
+    //i indica if
+    match('i');
+    condition();
+    l1 = newLabel();
+    l2 = l1;
+    //condition();
+    emit("JZ L%d", l1);
+    block(exitLabel);
+
+    //confere o comendo else
+    if (look == 'l') {
+        match('l');
+        l2 = newLabel();
+        emit("JMP L%d", l2);
+        postLabel(l1);
+        block(exitLabel);
+    }
+
+    //e indica endif
+    match('e');
+    postLabel(l2);
+}
+
+/* analisa e traduz um comando WHILE */
+void doWhile()
+{
+    int l1, l2;
+
+    match('w');
+    l1 = newLabel();
+    l2 = newLabel();
+    postLabel(l1);
+    condition();
+    emit("JZ L%d", l2);
+    block();
+    match('e');
+    emit("JMP L%d", l1);
+    postLabel(l2);
+}
+
+/* analisa e traduz um comando LOOP */
+void doLoop()
+{
+    int l1, l2;
+
+    match('p');
+    l1 = newLabel();
+    l2 = newLabel();
+    postLabel(l1);
+    block(l2);
+    match('e');
+    emit("JMP L%d", l1);
+    postLabel(l2);
+}
+
+/* analisa e traduz um REPEAT-UNTIL*/
+void doRepeat()
+{
+    int l;
+
+    match('r');
+    l = newLabel();
+    postLabel(l);
+    block();
+    match('u');
+    condition();
+    emit("JZ L%d", l);
+}
+
+//FOR <ident> = <expr1> TO <expr2> <block> ENDFOR
+/* analisa e traduz um comando FOR*/
+void doFor()
+{
+    int l1, l2;
+    char name;
+
+    match('f');
+    l1 = newLabel();
+    l2 = newLabel();
+    name = getName1();
+    match('=');
+    //pega o valor inicial
+    expression1();
+    //pré-decrementa
+    emit("DEC AX");
+    //salva o valor do contador
+    emit("MOV [%c], AX", name);
+    //pega o expressionlimite superior
+    expression1();
+    //salva na pilha
+    emit("PUSH AX");
+    //L1:
+    postLabel(l1);
+    //coloca em AX
+    emit("MOV AX, [%c]", name);
+    //incrementa o contador
+    emit("INC AX");
+    //salva o novo valor
+    emit("MOV [%c], AX", name);
+    //pega limite superior...
+    emit("POP BX");
+    //...mas devolve na pilha
+    emit("PUSH BX");
+    //compara contador com limite superior
+    emit("CMP AX, BX");
+    //termina se contador > limite superior
+    emit("JG L%d", l2);
+    block();
+    match('e');
+    //próximo passo
+    emit("JMP L%d", l1);
+    //L2:
+    postLabel(l2);
+    //retira limite superior da pilha
+    emit("POP AX");
+}
+
+void expression1()
+{
+        emit("# EXPR");
+}
+
+/* analisa e traduz uma condição */
+void condition()
+{
+    emit("# condition");
+}
+
+/* reconhece e traduz um comando qualquer */
+void other()
+{
+    emit("# %c", getName1());
+}
+
+/* analisa e traduz um programa completo */
+void program()
+{
+    block(-1);
+    //if (look != 'e')
+    //    expected("End");
+    match('e');
+    emit("END");
+}
+
+/* analisa e traduz um bloco de comandos */
+void block(int exitLabel)
+{
+    //enquanto for diferente de end
+    //while (look != 'e' && look != 'l') {
+    int follow;
+    follow = 0;
+    while(!follow){
+        switch (look) {
+            case 'i':
+                doIf(exitLabel);
+                break;
+            case 'w':
+                doWhile();
+                break;
+            case 'p':
+                doLoop();
+                break;
+            case 'r':
+                doRepeat();
+                break;
+            case 'f':
+                doFor();
+                break;
+            case 'd':
+                doDo();
+                break;
+            case 'b':
+                doBreak(exitLabel); 
+                break;
+            case 'e':
+            case 'l':
+            case 'u':
+                follow = 1;
+                break;
+            default:
+                other();
+                break;
+        }
+    }
+}
 
 // recebe o nome de um identificador
 void getName(char *name)
