@@ -48,6 +48,15 @@ void doFor();
 void expression1();
 void doDo();
 void doBreak(int );
+int isBoolean(char c);
+int getBoolean();
+void boolTerm();
+void boolOr();
+void boolXor();
+void boolExpression();
+int isOrOp(char c);
+void notFactor();
+void relation();
 
 /* PROGRAMA PRINCIPAL */
 int main()
@@ -633,4 +642,107 @@ void skipWhite()
     while (look == ' ' || look == '\t')
         nextChar();
 
+}
+
+/* reconhece uma literal Booleana */
+int isBoolean(char c)
+{
+    return (c == 'T' || c == 'F');
+}
+
+/* recebe uma literal Booleana */
+int getBoolean()
+{
+    int boolean;
+
+    if (!isBoolean(look))
+        expected("Boolean Literal");
+    boolean = (look == 'T');
+    nextChar();
+
+    return boolean;
+}
+
+/* analisa e traduz uma expressão Booleana */
+void boolFactor()
+{
+    if (isBoolean(look)) {
+        if (getBoolean())
+            emit("MOV AX, -1");
+        else
+            emit("MOV AX, 0");
+    } else
+        relation();
+}
+
+/* reconhece e traduz um operador OR */
+void boolOr()
+{
+        match('|');
+        boolTerm();
+        emit("POP BX");
+        emit("OR AX, BX");
+}
+
+/* reconhece e traduz um operador XOR */
+void boolXor()
+{
+        match('~');
+        boolTerm();
+        emit("POP BX");
+        emit("XOR AX, BX");
+}
+
+/* analisa e traduz uma expressão booleana */
+void boolExpression()
+{
+        boolTerm();
+        while (isOrOp(look)) {
+                emit("PUSH AX");
+                switch (look) {
+                  case '|':
+                        boolOr();
+                        break;
+                  case '~' :
+                        boolXor();
+                        break;
+                }
+        }
+}
+
+/* reconhece um operador OU */
+int isOrOp(char c)
+{
+    return (c == '|' || c == '~');
+}
+
+/* analisa e traduz um termo booleano*/
+void boolTerm()
+{
+    notFactor();
+    while (look == '&') {
+        emit("PUSH AX");
+        match('&');
+        notFactor();
+        emit("POP BX");
+        emit("AND AX, BX");
+    }
+}
+
+/* analisa e traduz um fator booleno com NOT opcional */
+void notFactor()
+{
+        if (look == '!') {
+                match('!');
+                boolFactor();
+                emit("NOT AX");
+        } else
+                boolFactor();
+}
+
+/* analisa e traduz uma relação */
+void relation()
+{
+        emit("# relation");
+        nextChar();
 }
