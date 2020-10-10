@@ -57,6 +57,9 @@ void boolExpression();
 int isOrOp(char c);
 void notFactor();
 void relation();
+int isRelOp(char c);
+int isMulOp(char c);
+void newLine();
 
 /* PROGRAMA PRINCIPAL */
 int main()
@@ -67,6 +70,7 @@ int main()
     //if (look != '\n')
     //    expected("NewLine");
     program();
+    //boolExpression();
 
     return 0;
 }
@@ -152,7 +156,7 @@ void doWhile()
     postLabel(l1);
     condition();
     emit("JZ L%d", l2);
-    block();
+    block(l2);
     match('e');
     emit("JMP L%d", l1);
     postLabel(l2);
@@ -176,15 +180,17 @@ void doLoop()
 /* analisa e traduz um REPEAT-UNTIL*/
 void doRepeat()
 {
-    int l;
+    int l1, l2;
 
     match('r');
-    l = newLabel();
-    postLabel(l);
-    block();
+    l1 = newLabel();
+    l2 = newLabel();
+    postLabel(l1);
+    block(l2);
     match('u');
     condition();
-    emit("JZ L%d", l);
+    emit("JZ L%d", l1);
+    postLabel(l2);
 }
 
 //FOR <ident> = <expr1> TO <expr2> <block> ENDFOR
@@ -201,6 +207,7 @@ void doFor()
     match('=');
     //pega o valor inicial
     expression1();
+    match('t');
     //pré-decrementa
     emit("DEC AX");
     //salva o valor do contador
@@ -225,7 +232,7 @@ void doFor()
     emit("CMP AX, BX");
     //termina se contador > limite superior
     emit("JG L%d", l2);
-    block();
+    block(l2);
     match('e');
     //próximo passo
     emit("JMP L%d", l1);
@@ -237,13 +244,14 @@ void doFor()
 
 void expression1()
 {
-        emit("# EXPR");
+    emit("# EXPR");
 }
 
 /* analisa e traduz uma condição */
 void condition()
 {
-    emit("# condition");
+    boolExpression();
+    //emit("# condition");
 }
 
 /* reconhece e traduz um comando qualquer */
@@ -270,6 +278,7 @@ void block(int exitLabel)
     int follow;
     follow = 0;
     while(!follow){
+        newLine();
         switch (look) {
             case 'i':
                 doIf(exitLabel);
@@ -298,9 +307,11 @@ void block(int exitLabel)
                 follow = 1;
                 break;
             default:
-                other();
+                //other();
+                assignment();
                 break;
         }
+        newLine();
     }
 }
 
@@ -459,15 +470,15 @@ void match(char c)
 /* analisa e traduz um comando de atribuição */
 void assignment()
 {
-    //char name;
-    //name = getName();
+    char name;
+    name = getName1();
 
-    char name[MAXNAME+1];
-    getName(name);
+    //char name[MAXNAME+1];
+    //getName(name);
 
     match('=');
     expression();
-    emit("MOV [%s], AX", name);
+    emit("MOV [%c], AX", name);
 
 }
 
@@ -491,7 +502,7 @@ void term()
     factor();
     //primeiro verificamos mul. e ad. pois tem prioridade
     //em expressões numéricas
-    while (look == '*' || look == '/') {
+    while (isMulOp(look)) {
         emit("PUSH AX");
         switch(look) {
             case '*':
@@ -567,26 +578,27 @@ void subtract()
 void ident()
 {
 
-    //char name;
-    //name = getName();
+    char name;
+    name = getName1();
     
     //para nomes com mais de uma letra
-    char name[MAXNAME+1];
-    getName(name);
+    //char name[MAXNAME+1];
+    //getName(name);
 
     //verifica função
     if (look == '(') {
-
         match('(');
         match(')');
-        emit("CALL %s", name);
+        //emit("CALL %s", name);
+        emit("CALL %c", name);
 
     } else
         //isalpha verifica se look o caractere
         //é um algabeto (a-z e A-Z)
         //emit("MOV AX, [%c]",getName());
         //move o valor contido em name para AX
-        emit("MOV AX, [%s]", name);
+        //emit("MOV AX, [%s]", name);
+        emit("MOV AX, [%c]", name);
 
 }
 
@@ -594,7 +606,7 @@ void ident()
 void factor()
 {
     //mais de uma casa decimal
-    char num[MAXNUM+1];
+    //char num[MAXNUM+1];
     
     if (look == '(') {
         match('(');
@@ -604,11 +616,11 @@ void factor()
     }else if(isalpha(look))
         ident();
     else
-        getNum(num);
-        emit("MOV AX, %s", num);
+        //getNum(num);
+        //emit("MOV AX, %s", num);
 
         //MOV coloca c no registrador AX
-        //emit("MOV AX, %c", getNum());
+        emit("MOV AX, %c", getNum1());
 }
 
 //multiplicação e a divisão usam o par de 
@@ -716,6 +728,11 @@ int isOrOp(char c)
     return (c == '|' || c == '~');
 }
 
+int isMulOp(char c)
+{
+    return (c == '*' || c == '/');
+}
+
 /* analisa e traduz um termo booleano*/
 void boolTerm()
 {
@@ -733,16 +750,122 @@ void boolTerm()
 void notFactor()
 {
         if (look == '!') {
-                match('!');
-                boolFactor();
-                emit("NOT AX");
+            match('!');
+            boolFactor();
+            emit("NOT AX");
         } else
-                boolFactor();
+            boolFactor();
+}
+
+/* reconhece operadores relacionais */
+int isRelOp(char c)
+{
+    //diferente é o #
+    return (c == '=' || c == '#' || c == '<' || c == '>');
+}
+
+/* reconhece e traduz um operador de igualdade */
+void equals()
+{
+    int l1, l2;
+
+    match('=');
+    l1 = newLabel();
+    l2 = newLabel();
+    expression();
+    emit("POP BX");
+    emit("CMP BX, AX");
+    emit("JE L%d", l1);
+    emit("MOV AX, 0");
+    emit("JMP L%d", l2);
+    postLabel(l1);
+    emit("MOV AX, -1");
+    postLabel(l2);
+}
+
+/* reconhece e traduz um operador de não-igualdade */
+void notEquals()
+{
+    int l1, l2;
+
+    match('#');
+    l1 = newLabel();
+    l2 = newLabel();
+    expression();
+    emit("POP BX");
+    emit("CMP BX, AX");
+    emit("JNE L%d", l1);
+    emit("MOV AX, 0");
+    emit("JMP L%d", l2);
+    postLabel(l1);
+    emit("MOV AX, -1");
+    postLabel(l2);
+}
+
+/* reconhece e traduz um operador de maior que */
+void greater()
+{
+    int l1, l2;
+
+    match('>');
+    l1 = newLabel();
+    l2 = newLabel();
+    expression();
+    emit("POP BX");
+    emit("CMP BX, AX");
+    emit("JG L%d", l1);
+    emit("MOV AX, 0");
+    emit("JMP L%d", l2);
+    postLabel(l1);
+    emit("MOV AX, -1");
+    postLabel(l2);
+}
+
+/* reconhece e traduz um operador de menor que */
+void less()
+{
+    int l1, l2;
+
+    match('<');
+    l1 = newLabel();
+    l2 = newLabel();
+    expression();
+    emit("POP BX");
+    emit("CMP BX, AX");
+    emit("JL L%d", l1);
+    emit("MOV AX, 0");
+    emit("JMP L%d", l2);
+    postLabel(l1);
+    emit("MOV AX, -1");
+    postLabel(l2);
 }
 
 /* analisa e traduz uma relação */
 void relation()
 {
-        emit("# relation");
+    expression();
+    if (isRelOp(look)) {
+        emit("PUSH AX");
+        switch (look) {
+            case '=':
+                equals();
+                break;
+            case '#':
+                notEquals();
+                break;
+            case '>':
+                greater();
+                break;
+            case '<':
+                less();
+                break;
+        }
+    }
+}
+
+/* reconhece uma linha em branco */
+void newLine()
+{
+    if (look == '\n')
         nextChar();
 }
