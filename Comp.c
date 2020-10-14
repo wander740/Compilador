@@ -14,8 +14,8 @@
 
 #define KWLIST_SZ 4
 
-enum { KW_IF, KW_ELSE, KW_ENDIF, KW_END, TK_IDENT,
-        TK_NUMBER, TK_OPERATOR };
+//enum { KW_IF, KW_ELSE, KW_ENDIF, KW_END, TK_IDENT,
+//        TK_NUMBER, TK_OPERATOR };
 
 const char *kwcode = "ilee";
 char *symtbl[SYMTBL_SZ];
@@ -84,7 +84,7 @@ int lookup(char *s, char *list[], int size);
 /* PROGRAMA PRINCIPAL */
 int main()
 {
-    labelCount = 0;
+    
     init();
     //assignment();
     //if (look != '\n')
@@ -531,6 +531,7 @@ char getNum1()
 /* inicialização do compilador */
 void init()
 {
+    labelCount = 0;
     nextChar();
     //pula espaços em branco
     skipWhite();
@@ -788,7 +789,6 @@ void divide()
 }
 
 /* pula caracteres de espaço */
-
 void skipWhite()
 {
     //newLine();
