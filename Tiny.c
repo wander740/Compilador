@@ -8,6 +8,7 @@
 #define MAXTOKEN 16
 
 int lblcount; /* indica o rótulo atual */
+char tempchar = ' ';
 
 /* tabela de símbolos */
 
@@ -38,6 +39,7 @@ void undefined(char *name);
 
 void duplicated(char *name);
 void checkident();
+void nextchar_x();
 
 /* reconhecedores */
 
@@ -141,6 +143,9 @@ void allocvar(char *name, int value);
 void decl();
 void topdecls();
 
+void semicolon();
+void skipcomment();
+
 /* programa principal */
 
 //void mainblock();
@@ -153,6 +158,9 @@ int main()
     init();
 
     matchstring("PROGRAM");
+    
+    semicolon();
+    
     header();
     topdecls();
     matchstring("BEGIN");
@@ -169,10 +177,33 @@ int main()
     return 0;
 }
 
+void nextchar_x(){
+    look = getchar();
+}
+
 /* lê próximo caracter da entrada em lookahead */
 void nextchar()
 {
-    look = getchar();
+    //look = getchar();
+    if (tempchar != ' ') {
+            look = tempchar;
+            tempchar = ' ';
+
+    } else {
+        nextchar_x();
+        if (look == '/') {
+            tempchar = getchar();
+
+            if (tempchar == '*') {
+                look = '{';
+                tempchar = ' ';
+
+            }
+
+        }
+    }
+    //if (look == '{')
+    //    skipcomment();
 
 }
 
@@ -261,10 +292,18 @@ int isrelop(char c)
 /* pula caracteres em branco */
 void skipwhite()
 {
-    //while (look == ' ' || look == '\t')
-    while (isspace(look))
+    //while (look == ' ' || look == '\t'){
+    //while (isspace(look))
+    while (look != '}') {
         nextchar();
+        if (look == '{')
+            skipcomment();
 
+        //else
+        //    nextchar();
+    
+    }
+    nextchar();
 }
 
 /* pula quebras de linha e linhas vazias*/
@@ -827,6 +866,36 @@ void divide()
 
 }
 
+/* reconhece um ponto-e-vírgula */
+void semicolon()
+{
+    //matchstring(";");
+    if (token == ';')
+        nexttoken();
+
+}
+
+/* pula um campo de comentário */
+void skipcomment()
+{
+    //while (look != '}') {
+    //    nextchar_x();
+    //}
+    //do {
+    //    nextchar_x();
+    //} while (look != '\n');
+    do {
+        do {
+            nextchar_x();
+
+        } while (look != '*');
+        nextchar_x();
+
+    } while (look != '/');
+    nextchar_x();
+
+}
+
 /* código comum usado por "term" e "firstterm" */
 void term1()
 {
@@ -1183,17 +1252,23 @@ void block()
                 dowrite();
                 break;
 
+            case 'x':
+                assignment();
+                break;
+
             case 'e':
 
             case 'l':
                 follow = 1;
                 break;
 
-            default:
-                assignment();
-                break;
+            //default:
+            //    assignment();
+            //    break;
 
         }
+        if (!follow)
+        semicolon();
 
     } while (!follow);
 
@@ -1249,6 +1324,7 @@ void topdecls()
             decl();
 
         } while (token == ',');
+        semicolon();
 
     }
 
