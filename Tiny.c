@@ -12,6 +12,7 @@ int lblcount; /* indica o rótulo atual */
 /* tabela de símbolos */
 
 char *symtbl[SYMTBL_SZ];
+char symtype[SYMTBL_SZ];
 int nsym; /* número de entradas atuais na tabela de símbolos */
 
 /* códigos e lista de palavras-chave */
@@ -35,6 +36,9 @@ void fatal(char *s);
 void expected(char *s);
 void undefined(char *name);
 
+void duplicated(char *name);
+void checkident();
+
 /* reconhecedores */
 
 int isaddop(char c);
@@ -46,7 +50,11 @@ int isrelop(char c);
 
 int lookup(char *s, char *list[], int size);
 int intable(char *name);
-void addsymbol(char *name);
+void addsymbol(char *name, char type);
+
+int locate(char *name);
+void checktable(char *name);
+void checkdup(char *name);
 
 /* analisador léxico */
 
@@ -54,9 +62,12 @@ void skipwhite();
 void newline();
 void match(char c);
 void getname();
-int getnum();
+void getnum();
 void scan();
 void matchstring(char *s);
+
+void getop();
+void nexttoken();
 
 /* rótulos */
 
@@ -66,7 +77,7 @@ int newlabel();
 
 void asm_clear();
 void asm_negative();
-void asm_loadconst(int i);
+void asm_loadconst(char *val);
 void asm_loadvar(char *name);
 void asm_push();
 void asm_popadd();
@@ -93,13 +104,13 @@ void epilog();
 /* expressões aritméticas */
 
 void factor();
-void negfactor();
-void firstfactor();
+//void negfactor();
+//void firstfactor();
 void multiply();
 void divide();
 void term1();
 void term();
-void firstterm();
+//void firstterm();
 void add();
 void subtract();
 void expression();
@@ -122,26 +133,38 @@ void doread();
 void dowrite();
 void block();
 
+void readvar();
+
 /* declarações */
 
-void allocvar(char *name);
+void allocvar(char *name, int value);
 void decl();
 void topdecls();
 
 /* programa principal */
 
-void mainblock();
-void prog();
+//void mainblock();
+//void prog();
 
 /* PROGRAMA PRINCIPAL */
 
 int main()
 {
     init();
-    prog();
 
-    if (look != '\n')
-        fatal("Unexpected data after \'.\'");
+    matchstring("PROGRAM");
+    header();
+    topdecls();
+    matchstring("BEGIN");
+    prolog();
+    block();
+    matchstring("END");
+    epilog();
+
+    //prog();
+
+    //if (look != '\n')
+    //    fatal("Unexpected data after \'.\'");
 
     return 0;
 }
@@ -179,15 +202,31 @@ void expected(char *s)
 /* avisa a respeito de um identificador desconhecido */
 void undefined(char *name)
 {
-    int i;
+    //int i;
 
     fprintf(stderr, "Error: Undefined identifier %s\n", name);
-    fprintf(stderr, "Symbol table:\n");
+    //fprintf(stderr, "Symbol table:\n");
 
-    for (i = 0; i < nsym; i++)
-        fprintf(stderr, "%d: %s\n", i, symtbl[i]);
+    //for (i = 0; i < nsym; i++)
+    //    fprintf(stderr, "%d: %s\n", i, symtbl[i]);
 
     exit(1);
+
+}
+
+/* avisa a respeito de um identificador desconhecido */
+void duplicated(char *name)
+{
+    fprintf(stderr, "Error: Duplicated identifier \'%s\'\n", name);
+    exit(1);
+
+}
+
+/* reporta um erro se token NÃO é identificador */
+void checkident()
+{
+    if (token != 'x')
+        expected("Identifier");
 
 }
 
@@ -222,7 +261,8 @@ int isrelop(char c)
 /* pula caracteres em branco */
 void skipwhite()
 {
-    while (look == ' ' || look == '\t')
+    //while (look == ' ' || look == '\t')
+    while (isspace(look))
         nextchar();
 
 }
@@ -274,6 +314,13 @@ int lookup(char *s, char *list[], int size)
 
 }
 
+/* retorna o endereço do identificador na tabela de símbolos */
+int locate(char *name)
+{
+    return lookup(name, symtbl, nsym);
+
+}
+
 /* verifica se "name" consta na tabela de símbolos */
 int intable(char *name)
 {
@@ -284,16 +331,32 @@ int intable(char *name)
 
 }
 
+/* reporta um erro se identificador NÃO constar na tabela de símbolos */
+void checktable(char *name)
+{
+    if (!intable(name))
+        undefined(name);
+
+}
+
+/* reporta um erro se identificador JÁ constar na tabela de símbolos */
+void checkdup(char *name)
+{
+    if (intable(name))
+        duplicated(name);
+
+}
+
 /* adiciona novo identificador à tabela de símbolos */
-void addsymbol(char *name)
+void addsymbol(char *name, char type)
 {
     char *newsym;
+    checkdup(name);
 
-    if (intable(name)) {
-        fprintf(stderr, "Duplicated variable name: %s", name);
-        exit(1);
-
-    }
+    //if (intable(name)) {
+    //    fprintf(stderr, "Duplicated variable name: %s", name);
+    //    exit(1);
+    //}
 
     if (nsym >= SYMTBL_SZ) {
         fatal("Symbol table full!");
@@ -305,7 +368,10 @@ void addsymbol(char *name)
         fatal("Out of memory!");
 
     strcpy(newsym, name);
-    symtbl[nsym++] = newsym;
+    symtbl[nsym] = newsym;
+    symtype[nsym] = type;
+
+    nsym++;
 
 }
 
@@ -313,7 +379,8 @@ void addsymbol(char *name)
 void getname()
 {
     int i;
-    newline();
+    //newline();
+    skipwhite();
 
     if (!isalpha(look))
         expected("Name");
@@ -325,29 +392,62 @@ void getname()
     }
     value[i] = '\0';
     token = 'x';
-    skipwhite();
+    //skipwhite();
 
 }
 
 /* analisa e traduz um número inteiro */
-int getnum()
+void getnum()
 {
     int i;
-    i = 0;
-    newline();
+    //i = 0;
+    //newline();
+    skipwhite();
 
     if (!isdigit(look))
-        expected("Integer");
+        expected("Number");
+        //expected("Integer");
 
-    while (isdigit(look)) {
-        i *= 10;
-        i += look - '0';
+    //while (isdigit(look)) {
+    //    i *= 10;
+    //    i += look - '0';
+    //    nextchar();
+    //}
+    //skipwhite();
+    for (i = 0; isdigit(look) && i < MAXTOKEN; i++) {
+        value[i] = look;
         nextchar();
 
     }
-    skipwhite();
+    value[i] = '\0';
+    token = '#';
 
-    return i;
+    //return i;
+}
+
+/* analisa e traduz um operador */
+void getop()
+{
+    skipwhite();
+    token = look;
+    value[0] = look;
+    value[1] = '\0';
+    nextchar();
+
+}
+
+/* pega o próximo token de entrada */
+void nexttoken()
+{
+    skipwhite();
+    if (isalpha(look))
+        getname();
+
+    else if (isdigit(look))
+        getnum();
+
+    else
+        getop();
 
 }
 
@@ -355,14 +455,17 @@ int getnum()
 void scan()
 {
     int kw;
-    getname();
-    kw = lookup(value, kwlist, KWLIST_SZ);
+    //getname();
+    if (token == 'x') {
+        kw = lookup(value, kwlist, KWLIST_SZ);
 
-    if (kw == -1)
-        token = 'x';
-
-    else
-        token = kwcode[kw];
+        //if (kw == -1)
+        //    token = 'x';
+        //else
+        if (kw >= 0)
+            token = kwcode[kw];
+    
+    }
 
 }
 
@@ -372,6 +475,7 @@ void matchstring(char *s)
     if (strcmp(value, s) != 0)
         expected(s);
 
+    nexttoken();
 }
 
 /* gera um novo rótulo */
@@ -398,9 +502,9 @@ void asm_negative()
 }
 
 /* carrega uma constante numérica no reg. prim. */
-void asm_loadconst(int i)
+void asm_loadconst(char *val)
 {
-    printf("\tmov ax, %d\n", i);
+    printf("\tmov ax, %d\n", val);
 
 }
 
@@ -459,8 +563,8 @@ void asm_popdiv()
 /* armazena reg. prim. em variável */
 void asm_store(char *name)
 {
-    if (!intable(name))
-        undefined(name);
+    //if (!intable(name))
+    //    undefined(name);
 
     printf("\tmov word ptr %s, ax\n", name);
 
@@ -609,26 +713,62 @@ void epilog()
 
 }
 
-/* analisa e traduz um fator matemático */
-void factor()
+
+/* aloca memória para uma declaração de variável (+inicializador) */
+void allocvar(char *name, int value)
 {
+    /*int value = 0, signal = 1;
+    addsymbol(name);
     newline();
 
-    if (look == '(') {
-        match('(');
-        boolexpression();
-        match(')');
+    if (look == '=') {
+        match('=');
+        newline();
 
-    } else if (isalpha(look)) {
-        getname();
-        asm_loadvar(value);
+        if (look == '-') {
+            match('-');
+            signal = -1;
 
-    } else
-        asm_loadconst(getnum());
+        }
+        value = signal * getnum();
+
+    }*/
+    printf("%s:\tdw %d\n", name, value);
 
 }
 
-/* analisa e traduz um fator negativo */
+/* analisa e traduz um fator matemático */
+void factor()
+{
+    //newline();
+
+    if (look == '(') {
+        //match('(');
+        nexttoken();
+        boolexpression();
+        match(')');
+
+    }else{ 
+        /*else if (isalpha(look)) {
+            getname();
+            asm_loadvar(value);
+
+        } else
+            asm_loadconst(getnum());*/
+        if (token == 'x')
+            asm_loadvar(value);
+
+        else if (token == '#')
+            asm_loadconst(value);
+
+        else
+            expected("Math Factor");
+
+        nexttoken();
+    }
+}
+
+/* analisa e traduz um fator negativo 
 void negfactor()
 {
     match('-');
@@ -644,7 +784,7 @@ void negfactor()
 
 }
 
-/* analisa e traduz um fator inicial */
+// analisa e traduz um fator inicial 
 void firstfactor()
 {
     newline();
@@ -665,12 +805,13 @@ void firstfactor()
 
     }
 
-}
+}*/
 
 /* reconhece e traduz uma multiplicação */
 void multiply()
 {
-    match('*');
+    //match('*');
+    nexttoken();
     factor();
     asm_popmul();
 
@@ -679,7 +820,8 @@ void multiply()
 /* reconhece e traduz uma divisão */
 void divide()
 {
-    match('/');
+    //match('/');
+    nexttoken();
     factor();
     asm_popdiv();
 
@@ -713,22 +855,36 @@ void term1()
 void term()
 {
     factor();
-    term1();
+    //term1();
+    while (ismulop(token))  {
+        asm_push();
 
+        switch (token) {
+            case '*':
+                multiply();
+                break;
+
+            case '/':
+                divide();
+                break;
+
+        }
+    }
 }
 
-/* analisa e traduz um termo inicial */
+/* analisa e traduz um termo inicial 
 void firstterm()
 {
     firstfactor();
     term1();
 
-}
+}*/
 
 /* reconhece e traduz uma adição */
 void add()
 {
-    match('+');
+    //match('+');
+    nexttoken();
     term();
     asm_popadd();
 
@@ -737,7 +893,8 @@ void add()
 /* reconhece e traduz uma subtração*/
 void subtract()
 {
-    match('-');
+    //match('-');
+    nexttoken();
     term();
     asm_popsub();
 
@@ -746,25 +903,28 @@ void subtract()
 /* analisa e traduz uma expressão matemática */
 void expression()
 {
-    firstterm();
-    newline();
+    //firstterm();
+    //newline();
+    if (isaddop(token))
+        asm_clear();
 
-    while (isaddop(look))  {
-        asm_push();
+    else
+        term();
+        while (isaddop(look))  {
+            asm_push();
 
-        switch (look) {
-            case '+':
-                add();
-                break;
+            switch (look) {
+                case '+':
+                    add();
+                    break;
 
-            case '-':
-                subtract();
-                break;
+                case '-':
+                    subtract();
+                    break;
 
+            }
+            //newline();
         }
-        newline();
-
-    }
 
 }
 
@@ -776,21 +936,25 @@ void relation()
 
     if (isrelop(look)) {
         op = look;
-        match(op); /* só para remover o operador do caminho */
+        //match(op); /* só para remover o operador do caminho */
+        nexttoken();
 
         if (op == '<') {
             if (look == '>') { /* <> */
-                match('>');
+                //match('>');
+                nexttoken();
                 op = '#';
 
             } else if (look == '=') {
-                match('=');
+                //match('=');
+                nexttoken();
                 op = 'L';
 
             }
 
         } else if (op == '>' && look == '=') {
-            match('=');
+            //match('=');
+            nexttoken();
             op = 'G';
 
         }
@@ -820,14 +984,15 @@ void notfactor()
 void boolterm()
 {
     notfactor();
-    newline();
+    //newline();
 
     while (look == '&') {
         asm_push();
-        match('&');
+        //match('&');
+        nexttoken();
         notfactor();
         asm_popand();
-        newline();
+        //newline();
 
     }
 
@@ -836,7 +1001,8 @@ void boolterm()
 /* reconhece e traduz um "OR" */
 void boolor()
 {
-    match('|');
+    //match('|');
+    nexttoken();
     boolterm();
     asm_popor();
 
@@ -845,7 +1011,8 @@ void boolor()
 /* reconhece e traduz um "xor" */
 void boolxor()
 {
-    match('~');
+    //match('~');
+    nexttoken();
     boolterm();
     asm_popxor();
 
@@ -855,7 +1022,7 @@ void boolxor()
 void boolexpression()
 {
     boolterm();
-    newline();
+    //newline();
 
     while (isorop(look)) {
         asm_push();
@@ -870,7 +1037,7 @@ void boolexpression()
                 break;
 
         }
-        newline();
+        //newline();
 
     }
 
@@ -881,7 +1048,10 @@ void assignment()
 {
     char name[MAXTOKEN+1];
     strcpy(name, value);
-    match('=');
+    checktable(name);
+    //match('=');
+    nexttoken();
+    matchstring("=");
     boolexpression();
     asm_store(name);
 
@@ -891,6 +1061,7 @@ void assignment()
 void doif()
 {
     int l1, l2;
+    nexttoken();
     boolexpression();
     l1 = newlabel();
     l2 = l1;
@@ -898,6 +1069,7 @@ void doif()
     block();
 
     if (token == 'l') {
+        nexttoken();
         l2 = newlabel();
         asm_jmp(l2);
         printf("L%d:\n", l1);
@@ -914,6 +1086,7 @@ void doif()
 void dowhile()
 {
     int l1, l2;
+    nexttoken();
     l1 = newlabel();
     l2 = newlabel();
     printf("L%d:\n", l1);
@@ -926,43 +1099,62 @@ void dowhile()
 
 }
 
+/* lê uma variável única */
+void readvar()
+{
+    checkident();
+    checktable(value);
+    asm_read(value);
+    nexttoken();
+
+}
+
 /* analiza e traduz um comando READ */
 void doread()
 {
-    match('(');
+    //match('(');
+    nexttoken();
+    matchstring("(");
 
     for (;;) {
-        getname();
-        asm_read();
-        newline();
+        //getname();
+        //asm_read();
+        //newline();
+        readvar();
 
         if (look != ',')
             break;
 
-        match(',');
+        //match(',');
+        nexttoken();
 
     }
-    match(')');
+    //match(')');
+    matchstring(")");
 
 }
 
 /* analiza e traduz um comando WRITE */
 void dowrite()
 {
-    match('(');
+    //match('(');
+    nexttoken();
+    matchstring("(");
 
     for (;;) {
         expression();
         asm_write();
-        newline();
+        //newline();
 
         if (look != ',')
-             break;
+            break;
 
-        match(',');
+        //match(',');
+        nexttoken();
 
     }
-    match(')');
+    //match(')');
+    matchstring(")");
 
 }
 
@@ -1007,32 +1199,10 @@ void block()
 
 }
 
-/* aloca memória para uma declaração de variável (+inicializador) */
-void allocvar(char *name)
-{
-    int value = 0, signal = 1;
-    addsymbol(name);
-    newline();
-
-    if (look == '=') {
-        match('=');
-        newline();
-
-        if (look == '-') {
-            match('-');
-            signal = -1;
-
-        }
-        value = signal * getnum();
-
-    }
-    printf("%s:\tdw %d\n", name, value);
-
-}
-
 /* analisa e traduz uma declaração */
 void decl()
 {
+    /*
     for (;;) {
         getname();
         //allocvar simplesmente 
@@ -1045,7 +1215,15 @@ void decl()
 
         match(',');
 
-    }
+    }*/
+    nexttoken();
+    if (token != 'x')
+        expected("Variable name");
+
+    checkdup(value);
+    addsymbol(value, 'v');
+    allocvar(value, 0);
+    nexttoken();
 
 }
 
@@ -1054,26 +1232,29 @@ void topdecls()
 {
     scan();
 
-    while (token != 'b') {
+    /*while (token != 'b') {
         switch (token) {
-
             case 'v':
                 decl();
                 break;
-
             default:
                 error("Unrecognized keyword.");
                 expected("BEGIN");
                 break;
-
         }
         scan();
+    }*/
+    while (token == 'v') {
+        do {
+            decl();
+
+        } while (token == ',');
 
     }
 
 }
 
-/* analisa e traduz o bloco principal do programa*/
+/* analisa e traduz o bloco principal do programa
 void mainblock()
 {
     //match('b');
@@ -1086,7 +1267,7 @@ void mainblock()
 
 }
 
-/* analisa e traduz um programa TINY */
+// analisa e traduz um programa TINY 
 void prog()
 {
     //cabeçalho do programa
@@ -1098,13 +1279,14 @@ void prog()
     mainblock();
     match('.');
 
-}
+}*/
 
 /* inicialização do compilador */
 void init()
 {
     nsym = 0;
     nextchar();
-    scan();
+    //scan();
+    nexttoken();
 
 }
