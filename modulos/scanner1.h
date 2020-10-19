@@ -9,7 +9,7 @@
 int isAddOp(char c);
 int isMulOp(char c);
 void match(char c);
-char getName();
-char getNum();
+void getName(char *name);
+void getNum(char *num);
 
 #endif

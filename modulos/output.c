@@ -1,8 +1,9 @@
 /* output.c */
-
 #include <stdio.h>
 #include <stdarg.h>
+#include "output.h"
 
+/* emite uma instrução seguida por uma nova linha */
 void emit(char *fmt, ...)
 {
     va_list args;

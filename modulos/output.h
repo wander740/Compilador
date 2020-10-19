@@ -1,5 +1,4 @@
 /* output.h */
-
 #ifndef _OUTPUT_H
 #define _OUTPUT_H
 

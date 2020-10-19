@@ -10,7 +10,9 @@
 int main()
 {
     initInput();
-    factor();
+    //factor();
+    //expression();
+    assignment();
 
     return 0;
 

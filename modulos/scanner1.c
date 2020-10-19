@@ -1,19 +1,20 @@
 /* scanner1.c */
 #include <ctype.h>
 #include "input.h"
+#include "errors.h"
 #include "scanner1.h"
 
 /* reconhece um operador aditivo */
 int isAddOp(char c)
 {
-    return (c == '+' || c == '-');
+    return (c == '+' || c == '-' || c == '|' || c == '~');
 
 }
 
 /* reconhece um operador multiplicativo */
 int isMulOp(char c)
 {
-    return (c == '*' || c == '/');
+    return (c == '*' || c == '/' || c == '&');
 
 }
 
@@ -28,7 +29,7 @@ void match(char c)
 }
 
 /* retorna um identificador */
-char getName()
+void getName(char *name)
 {
 
     int i;
@@ -50,20 +51,41 @@ char getName()
 }
 
 /* retorna um número */
-char getNum()
+void getNum(char *num)
 {
-    long num = 0;
+    //long num = 0;
+    int i;
 
     if (!isdigit(look))
         expected("Integer");
 
-    do {
+    /*do {
         num *= 10;
         num += look - '0';
         nextChar();                       
+    } while (isdigit(look));*/
 
-    } while (isdigit(look));
+    //return num;
+    for (i = 0; isdigit(look); i++) {
+		if (i >= MAXNUM)
+			error("Integer too large.");
+            
+		num[i] = look;
+		nextChar();
+	}
+	num[i] = '\0';
+}
 
-    return num;
+/* reconhece um operador aditivo */
+int isAddOp(char c)
+{
+	return (c == '+' || c == '-' || c == '|' || c == '~');
+
+}
+
+/* reconhece um operador multiplicativo */
+int isMulOp(char c)
+{
+    return (c == '*' || c == '/' || c == '&');
 
 }
